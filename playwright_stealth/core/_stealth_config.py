@@ -1,7 +1,8 @@
 import json
 from dataclasses import dataclass
-from typing import Dict, Tuple, Optional
+from typing import Dict
 import os
+from playwright_stealth.core._options import StealthOptions
 from playwright_stealth.properties import Properties, BrowserType
 
 
@@ -52,7 +53,7 @@ class StealthConfig:
         ```
     """
 
-    # load script options
+    # Script toggles
     webdriver: bool = True
     webgl_vendor: bool = True
     chrome_app: bool = True
@@ -61,28 +62,81 @@ class StealthConfig:
     chrome_runtime: bool = True
     iframe_content_window: bool = True
     media_codecs: bool = True
-    navigator_hardware_concurrency: int = 4
     navigator_languages: bool = True
     navigator_permissions: bool = True
     navigator_plugins: bool = True
     navigator_user_agent: bool = True
     navigator_vendor: bool = True
     outerdimensions: bool = True
-    browser_type: BrowserType = BrowserType.CHROME
 
-    # options
-    vendor: str = "Intel Inc."
-    renderer: str = "Intel Iris OpenGL Engine"
-    nav_vendor: str = "Google Inc."
-    nav_user_agent: str = None
-    nav_platform: str = None
-    languages: Tuple[str, str] = ("en-US", "en")
-    run_on_insecure_origins: Optional[bool] = None
+    browser_type: BrowserType = BrowserType.CHROME
+    options: StealthOptions = None
+
+    def _apply_options(self, properties: Properties):
+        """Apply custom options to the properties, while attempting to preserve consistency."""
+
+        opts = self.options
+        if opts.user_agent:
+            self._apply_user_agent_properties(properties, opts.user_agent)
+
+        self._apply_language_settings(properties)
+        if opts.platform and not opts.user_agent:
+            properties.navigator.platform = opts.platform
+
+        if opts.vendor and not opts.user_agent:
+            properties.navigator.vendor = opts.vendor
+
+        self._apply_hardware_specs(properties)
+        self._apply_webgl_settings(properties)
+
+        if opts.run_on_insecure_origins is not None:
+            properties.runOnInsecureOrigins = opts.run_on_insecure_origins
+
+    def _apply_user_agent_properties(self, properties: Properties, user_agent: str):
+        """Apply user agent and related derivative properties."""
+
+        properties.navigator.userAgent = user_agent
+        properties.header.user_agent = user_agent
+        properties.navigator.appVersion = properties.navigator._generate_app_version(user_agent)
+        properties.navigator.platform = (
+            self.options.platform or properties.navigator._generate_platform(user_agent)
+        )
+        properties.navigator.vendor = self.options.vendor or properties.navigator._generate_vendor(
+            user_agent
+        )
+
+    def _apply_language_settings(self, properties: Properties):
+        """Apply language-related settings."""
+
+        if languages := self.options.derive_navigator_languages():
+            properties.navigator.languages = languages
+
+        if accept_lang := self.options.derive_accept_language_header():
+            properties.header.accept_language = accept_lang
+
+    def _apply_hardware_specs(self, properties: Properties):
+        """Apply hardware specification settings."""
+
+        if self.options.hardware_concurrency is not None:
+            properties.navigator.hardwareConcurrency = self.options.hardware_concurrency
+
+        if self.options.device_memory is not None:
+            properties.navigator.deviceMemory = self.options.device_memory
+
+    def _apply_webgl_settings(self, properties: Properties):
+        """Apply WebGL-related settings."""
+
+        if self.options.webgl_vendor:
+            properties.webgl.vendor = self.options.webgl_vendor
+
+        if self.options.webgl_renderer:
+            properties.webgl.renderer = self.options.webgl_renderer
 
     def enabled_scripts(self, properties: Properties):
-        """
-        Generate the scripts to be executed.
-        """
+        """Generate the scripts to be executed."""
+
+        if self.options:
+            self._apply_options(properties)
 
         opts = json.dumps(properties.as_dict())
 
