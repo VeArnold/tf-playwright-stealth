@@ -48,8 +48,7 @@ async def main():
             ),
         )
 
-        await page.goto("http://localhost:5173/fingerprint-check")
-
+        await page.goto("https://www.bot.sannysoft.com/")
         await page.wait_for_timeout(30000)
 
 
